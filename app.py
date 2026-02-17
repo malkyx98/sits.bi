@@ -8,44 +8,44 @@ import plotly.express as px
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
-st.set_page_config(page_title="🌈 AI Colorful Excel Analyzer", layout="wide")
+st.set_page_config(page_title="💻 System Engineer Excel Analyzer", layout="wide", page_icon="🖥️")
 
 # -----------------------------
-# CUSTOM COLORFUL CSS
+# DARK THEME CSS
 # -----------------------------
 st.markdown("""
 <style>
 body {
-    background: linear-gradient(to right, #f9f9f9, #e0f7fa);
-    color: #000;
-    font-family: 'Segoe UI', sans-serif;
+    background-color: #1e1e1e;
+    color: #c0c0c0;
+    font-family: 'Consolas', monospace;
 }
 h1, h2, h3 {
+    color: #00ffff;
     font-weight: bold;
-    background: linear-gradient(90deg, #ff4b4b, #ffa64b, #4b6eff);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
 }
 .stButton>button {
-    background: linear-gradient(90deg, #ff4b4b, #ffa64b, #4b6eff);
-    color: #fff;
+    background-color: #00ffff;
+    color: #1e1e1e;
     font-weight: bold;
-    border-radius: 15px;
+    border-radius: 8px;
 }
 .kpi-card {
-    background: linear-gradient(135deg, #f7971e, #ffd200, #6a11cb);
-    color: #fff;
+    background-color: #333;
+    border-left: 5px solid #00ffff;
     padding: 15px;
-    border-radius: 15px;
+    border-radius: 8px;
+    color: #fff;
     text-align: center;
     margin-bottom: 10px;
 }
 .dataframe th {
-    background: #ff4b4b;
-    color: white;
+    background-color: #222;
+    color: #00ffff;
 }
 .dataframe td {
-    background: #fff3e0;
+    background-color: #1e1e1e;
+    color: #c0c0c0;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -53,8 +53,8 @@ h1, h2, h3 {
 # -----------------------------
 # TITLE
 # -----------------------------
-st.title("🌈 AI-Powered Colorful Global Excel Analyzer")
-st.markdown("Upload ANY Excel file → Get instant AI-driven KPIs, trends, and rainbow charts!")
+st.title("💻 AI-Powered System Engineer Excel Analyzer")
+st.markdown("Upload ANY Excel file → Get instant AI-driven KPIs, trends, and system-style reports.")
 
 # -----------------------------
 # FILE UPLOAD
@@ -114,7 +114,7 @@ with col2:
     st.markdown(f"**✅ Status:** {status_cols if status_cols else 'None'}")
 
 # -----------------------------
-# KPI CARDS WITH RAINBOW GRADIENTS
+# KPI CARDS
 # -----------------------------
 st.markdown("### 📊 Numeric KPIs")
 if numeric_cols:
@@ -133,10 +133,10 @@ else:
     st.info("No numeric columns found for KPIs.")
 
 # -----------------------------
-# CATEGORICAL SUMMARY WITH COLORFUL CHARTS
+# CATEGORICAL SUMMARY WITH DARK CHARTS
 # -----------------------------
 st.markdown("### 🏷️ Categorical Analysis")
-palette = px.colors.qualitative.Plotly
+palette = px.colors.sequential.Teal
 for idx, col in enumerate(categorical_cols):
     counts = df[col].value_counts().head(10)
     st.markdown(f"**Top 10 values for {col}:**")
@@ -147,15 +147,16 @@ for idx, col in enumerate(categorical_cols):
                          labels={'x': col, 'y': 'Count'},
                          color=counts.index,
                          color_discrete_sequence=palette)
+            fig.update_layout(plot_bgcolor='#1e1e1e', paper_bgcolor='#1e1e1e', font_color='white')
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Skipping chart for {col}: {e}")
 
 # -----------------------------
-# DATE TRENDS WITH RAINBOW LINES
+# DATE TRENDS
 # -----------------------------
 st.markdown("### 📆 Date Trends")
-rainbow_colors = px.colors.qualitative.D3
+trend_colors = px.colors.sequential.Teal
 for col in date_cols:
     df[col+'_dt'] = pd.to_datetime(df[col], errors='coerce')
     if df[col+'_dt'].notna().sum() > 0:
@@ -165,7 +166,8 @@ for col in date_cols:
             fig = px.line(trend, x=trend.index.astype(str), y=trend.values, markers=True,
                           labels={'x':'Month','y':'Count'},
                           line_shape='spline',
-                          color_discrete_sequence=rainbow_colors)
+                          color_discrete_sequence=trend_colors)
+            fig.update_layout(plot_bgcolor='#1e1e1e', paper_bgcolor='#1e1e1e', font_color='white')
             st.plotly_chart(fig, use_container_width=True)
         except:
             pass
@@ -178,6 +180,6 @@ output = BytesIO()
 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
     df.to_excel(writer, sheet_name='Processed_Data', index=False)
 output.seek(0)
-st.download_button("Download Excel Report", output.getvalue(), "AI_Colorful_Excel_Report.xlsx")
+st.download_button("Download Excel Report", output.getvalue(), "AI_SystemEngineer_Excel_Report.xlsx")
 
-st.success("✅ Analysis Complete! Enjoy your rainbow-powered AI insights 🌈")
+st.success("✅ Analysis Complete! Sleek system-style insights delivered 💻")
