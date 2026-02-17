@@ -8,45 +8,35 @@ import plotly.express as px
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
-st.set_page_config(page_title="🤖 AI-Powered Global Excel Analyzer", layout="wide")
+st.set_page_config(page_title="🌈 Colorful AI Excel Analyzer", layout="wide")
 
 # -----------------------------
-# CUSTOM CSS - AI THEME
+# CUSTOM CSS - COLORFUL THEME
 # -----------------------------
 st.markdown("""
 <style>
-/* Background & main text */
 body {
-    background-color: #0e1117;
-    color: #ffffff;
-}
-
-/* Header style */
-h1, h2, h3 {
-    color: #00ffff;
+    background-color: #f0f2f6;
+    color: #000000;
     font-family: 'Segoe UI', sans-serif;
 }
-
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background-color: #111827;
-    color: #ffffff;
-}
-
-/* Buttons */
-.stButton>button {
-    background-color: #00ffff;
-    color: #000000;
+h1, h2, h3 {
+    color: #ff4b4b;
     font-weight: bold;
 }
-
-/* KPI Cards */
-.kpi-card {
-    background-color: #1f2937;
-    padding: 10px 15px;
+.stButton>button {
+    background: linear-gradient(90deg, #ff4b4b, #ffa64b);
+    color: #ffffff;
+    font-weight: bold;
     border-radius: 10px;
+}
+.kpi-card {
+    background: linear-gradient(135deg, #4facfe, #00f2fe);
+    color: #ffffff;
+    padding: 15px;
+    border-radius: 15px;
     margin: 5px;
-    display: inline-block;
+    text-align: center;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -54,8 +44,8 @@ h1, h2, h3 {
 # -----------------------------
 # APP TITLE
 # -----------------------------
-st.title("🤖 AI-Powered Global Excel Analyzer")
-st.markdown("Upload ANY Excel file → Get instant AI-driven KPIs, trends, and reports")
+st.title("🌈 AI-Powered Colorful Global Excel Analyzer")
+st.markdown("Upload ANY Excel file → Get instant AI-driven KPIs, trends, and colorful reports!")
 
 # -----------------------------
 # FILE UPLOAD
@@ -66,7 +56,6 @@ if uploaded_file is None:
     st.info("Please upload an Excel file to proceed.")
     st.stop()
 
-# Read Excel
 try:
     df = pd.read_excel(uploaded_file)
 except Exception as e:
@@ -76,16 +65,14 @@ except Exception as e:
 st.success(f"File uploaded! Rows: {df.shape[0]}, Columns: {df.shape[1]}")
 
 # -----------------------------
-# COLUMN ROLE DETECTION
+# DETECT COLUMN ROLES
 # -----------------------------
 def detect_column_roles(df):
     numeric_cols, date_cols, categorical_cols, id_cols, status_cols = [], [], [], [], []
     for col in df.columns:
         s = df[col].dropna()
-        # Numeric detection
         if pd.api.types.is_numeric_dtype(s):
             numeric_cols.append(col)
-        # Date detection
         elif pd.api.types.is_datetime64_any_dtype(s):
             date_cols.append(col)
         elif any(keyword in col.lower() for keyword in ['date','start','end','time']):
@@ -94,10 +81,8 @@ def detect_column_roles(df):
                 date_cols.append(col)
             except:
                 categorical_cols.append(col)
-        # ID/Name detection
         elif any(keyword in col.lower() for keyword in ['id','name','ref','user']):
             id_cols.append(col)
-        # Status detection
         elif any(keyword in col.lower() for keyword in ['status','sla','done','closed','pending']):
             status_cols.append(col)
         else:
@@ -107,7 +92,7 @@ def detect_column_roles(df):
 numeric_cols, categorical_cols, date_cols, id_cols, status_cols = detect_column_roles(df)
 
 # -----------------------------
-# COLUMN ROLES DISPLAY
+# DISPLAY COLUMN ROLES
 # -----------------------------
 st.markdown("### 🔍 Detected Column Roles")
 col1, col2 = st.columns(2)
@@ -139,13 +124,17 @@ else:
 # CATEGORICAL SUMMARY
 # -----------------------------
 st.markdown("### 🏷️ Categorical Summary")
-for col in categorical_cols:
+color_palette = px.colors.qualitative.Vivid
+for idx, col in enumerate(categorical_cols):
     counts = df[col].value_counts().head(10)
     st.markdown(f"**Top values for {col}:**")
     st.dataframe(counts)
     if len(counts) > 0:
         try:
-            fig = px.bar(counts, x=counts.index, y=counts.values, labels={'x': col, 'y': 'Count'}, color=counts.values)
+            fig = px.bar(counts, x=counts.index, y=counts.values, 
+                         labels={'x': col, 'y': 'Count'}, 
+                         color=counts.values, 
+                         color_continuous_scale=color_palette)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Skipping chart for {col}: {e}")
@@ -161,7 +150,8 @@ for col in date_cols:
         st.markdown(f"**Monthly Trend for {col}:**")
         try:
             fig = px.line(trend, x=trend.index.astype(str), y=trend.values, markers=True,
-                          labels={'x':'Month', 'y':'Count'}, line_shape='spline')
+                          labels={'x':'Month', 'y':'Count'},
+                          line_shape='spline', color_discrete_sequence=["#ff7f50"])
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Skipping trend chart for {col}: {e}")
@@ -174,7 +164,7 @@ output = BytesIO()
 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
     df.to_excel(writer, sheet_name='Processed_Data', index=False)
 output.seek(0)
-st.download_button("Download Excel Report", output.getvalue(), "AI_Excel_Report.xlsx")
+st.download_button("Download Excel Report", output.getvalue(), "AI_Colorful_Excel_Report.xlsx")
 
-st.success("✅ AI Analysis Complete! Your KPIs, trends, and summaries are ready.")
+st.success("✅ AI Analysis Complete! Your colorful KPIs, trends, and summaries are ready.")
 
