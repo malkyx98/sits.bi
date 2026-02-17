@@ -2,13 +2,17 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from io import BytesIO
+from datetime import datetime
+from pptx import Presentation
+from pptx.util import Inches
 
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
-st.set_page_config(page_title="Global Excel Analyzer v3", layout="wide")
-st.title("📊 Global Excel Analyzer v3")
-st.write("Upload ANY Excel file → Get interactive KPIs and visualizations automatically")
+st.set_page_config(page_title="AI-Powered Excel Analyzer", layout="wide")
+st.title("🤖 AI-Powered Global Excel Analyzer")
+st.write("Upload ANY Excel file → Get instant AI-driven KPIs, trends, and reports")
 
 # -----------------------------
 # FILE UPLOAD
@@ -27,144 +31,142 @@ except Exception as e:
 
 st.success(f"File uploaded! Rows: {df.shape[0]}, Columns: {df.shape[1]}")
 
-# -----------------------------
-# CLEAN COLUMN NAMES
-# -----------------------------
-df.columns = [str(col).strip() if col is not None else f"Column_{i}" 
-              for i, col in enumerate(df.columns)]
+# Clean column names
+df.columns = [str(c).strip() if c else f"Column_{i}" for i,c in enumerate(df.columns)]
 
-# -----------------------------
-# DATA PREVIEW
-# -----------------------------
 with st.expander("Preview Data"):
     st.dataframe(df.head())
 
 # -----------------------------
-# SMART COLUMN DETECTION
+# AI COLUMN ROLE DETECTION
 # -----------------------------
-def detect_columns(df):
-    numeric_cols, categorical_cols, date_cols = [], [], []
+def detect_column_roles(df):
+    numeric_cols, categorical_cols, date_cols, id_cols, status_cols = [], [], [], [], []
+
     for col in df.columns:
-        series = df[col].dropna()
-        if len(series) == 0:
+        sample = df[col].dropna()
+        if sample.empty:
             continue
+
         # Date detection
         try:
-            parsed = pd.to_datetime(series, errors='coerce')
-            if parsed.notna().sum() / len(series) > 0.5:
+            parsed = pd.to_datetime(sample, errors='coerce')
+            if parsed.notna().sum() / len(sample) > 0.5:
                 date_cols.append(col)
                 continue
         except:
             pass
+
         # Numeric detection
-        numeric_series = pd.to_numeric(series, errors='coerce')
+        numeric_series = pd.to_numeric(sample, errors='coerce')
         if numeric_series.notna().any():
             numeric_cols.append(col)
-        else:
-            categorical_cols.append(col)
-    return numeric_cols, categorical_cols, date_cols
+            continue
 
-numeric_cols, categorical_cols, date_cols = detect_columns(df)
+        # Status detection (yes/no, closed/open, passed/failed)
+        lower = sample.astype(str).str.lower()
+        if lower.isin(['yes','no','closed','open','passed','failed']).any():
+            status_cols.append(col)
+            continue
 
-st.subheader("Detected Column Types")
-c1,c2,c3 = st.columns(3)
-c1.info(f"🔢 Numeric Columns:\n{numeric_cols if numeric_cols else 'None'}")
-c2.warning(f"🏷️ Categorical Columns:\n{categorical_cols if categorical_cols else 'None'}")
-c3.success(f"📅 Date Columns:\n{date_cols if date_cols else 'None'}")
+        # ID / identifier detection (names, codes)
+        if any(keyword in col.lower() for keyword in ['id','name','ref','agent','technician','caller']):
+            id_cols.append(col)
+            continue
 
-# -----------------------------
-# INTERACTIVE FILTERS
-# -----------------------------
-st.sidebar.subheader("🔎 Filters")
+        # Default categorical
+        categorical_cols.append(col)
 
-# Numeric filters
-for col in numeric_cols:
-    min_val = float(df[col].min())
-    max_val = float(df[col].max())
-    step = (max_val - min_val) / 100 if max_val > min_val else 1
-    df = df[(df[col] >= st.sidebar.slider(f"{col} min", min_val, max_val, min_val, step)) &
-            (df[col] <= st.sidebar.slider(f"{col} max", min_val, max_val, max_val, step))]
+    return numeric_cols, categorical_cols, date_cols, id_cols, status_cols
 
-# Categorical filters
-for col in categorical_cols:
-    options = df[col].dropna().unique().tolist()
-    selected = st.sidebar.multiselect(f"{col} filter", options, default=options)
-    df = df[df[col].isin(selected)]
+numeric_cols, categorical_cols, date_cols, id_cols, status_cols = detect_column_roles(df)
 
-# Date filters
-for col in date_cols:
-    try:
-        df[col+'_parsed'] = pd.to_datetime(df[col], errors='coerce')
-        min_date = df[col+'_parsed'].min()
-        max_date = df[col+'_parsed'].max()
-        selected_range = st.sidebar.date_input(f"{col} range", [min_date, max_date])
-        if len(selected_range) == 2:
-            df = df[(df[col+'_parsed'] >= pd.to_datetime(selected_range[0])) &
-                    (df[col+'_parsed'] <= pd.to_datetime(selected_range[1]))]
-    except:
-        continue
+st.subheader("Detected Column Roles")
+c1,c2,c3,c4,c5 = st.columns(5)
+c1.info(f"🔢 Numeric: {numeric_cols if numeric_cols else 'None'}")
+c2.warning(f"🏷️ Categorical: {categorical_cols if categorical_cols else 'None'}")
+c3.success(f"📅 Date: {date_cols if date_cols else 'None'}")
+c4.primary(f"🆔 ID/Name: {id_cols if id_cols else 'None'}")
+c5.secondary(f"✅ Status: {status_cols if status_cols else 'None'}")
 
 # -----------------------------
-# NUMERIC KPIs
+# AI AUTOMATIC ANALYSIS
 # -----------------------------
-st.subheader("📊 Numeric KPIs")
+st.subheader("📊 Automatic KPI & Summary Tables")
+
+# Numeric KPIs
 if numeric_cols:
     for col in numeric_cols:
-        numeric_series = pd.to_numeric(df[col], errors='coerce')
+        series = pd.to_numeric(df[col], errors='coerce')
         k1,k2,k3,k4 = st.columns(4)
-        k1.metric(f"{col} Total", round(numeric_series.sum(),2))
-        k2.metric(f"{col} Avg", round(numeric_series.mean(),2))
-        k3.metric(f"{col} Max", numeric_series.max())
-        k4.metric(f"{col} Min", numeric_series.min())
+        k1.metric(f"{col} Total", round(series.sum(),2))
+        k2.metric(f"{col} Avg", round(series.mean(),2))
+        k3.metric(f"{col} Max", round(series.max(),2))
+        k4.metric(f"{col} Min", round(series.min(),2))
 else:
     st.info("No numeric columns detected.")
 
-# -----------------------------
-# CATEGORICAL COUNTS
-# -----------------------------
-st.subheader("📈 Categorical Counts (Top 10)")
+# Status KPIs
+if status_cols:
+    for col in status_cols:
+        counts = df[col].value_counts()
+        st.markdown(f"**{col} Summary**")
+        st.table(counts)
+
+# Categorical top 10
 if categorical_cols:
     for col in categorical_cols:
-        counts = df[col].dropna().astype(str).value_counts().head(10)
-        if counts.empty:
-            continue
-        st.markdown(f"**{col}** - Top 10 values")
-        st.bar_chart(counts)
-else:
-    st.info("No categorical columns detected.")
+        counts = df[col].astype(str).value_counts().head(10)
+        if not counts.empty:
+            st.markdown(f"**{col} Top 10 Values**")
+            st.bar_chart(counts)
 
-# -----------------------------
-# DATE TRENDS
-# -----------------------------
-st.subheader("📆 Date Trends")
+# Date trends
 if date_cols:
     for col in date_cols:
-        if col+'_parsed' not in df.columns:
+        try:
             df[col+'_parsed'] = pd.to_datetime(df[col], errors='coerce')
-        trend = df.groupby(df[col+'_parsed'].dt.to_period("M")).size().reset_index(name='Count')
-        trend[col+'_parsed'] = trend[col+'_parsed'].astype(str)
-        if trend.empty:
+            trend = df.groupby(df[col+'_parsed'].dt.to_period("M")).size().reset_index(name='Count')
+            trend[col+'_parsed'] = trend[col+'_parsed'].astype(str)
+            fig = px.line(trend, x=col+'_parsed', y='Count', title=f"Trend over time ({col})")
+            st.plotly_chart(fig, use_container_width=True)
+        except:
             continue
-        fig = px.line(trend, x=col+'_parsed', y='Count', title=f"Trend over time ({col})")
-        st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("No date columns detected.")
 
 # -----------------------------
-# CORRELATION HEATMAP
+# CORRELATION FOR NUMERIC
 # -----------------------------
-st.subheader("🔥 Correlation Heatmap")
 if len(numeric_cols) > 1:
+    st.subheader("🔥 Numeric Correlation Heatmap")
     corr = df[numeric_cols].apply(pd.to_numeric, errors='coerce').corr()
     fig_corr = px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', title="Correlation Heatmap")
     st.plotly_chart(fig_corr, use_container_width=True)
-else:
-    st.info("Need at least 2 numeric columns for correlation analysis.")
 
 # -----------------------------
-# DOWNLOAD PROCESSED DATA
+# DOWNLOAD PROCESSED EXCEL & PPT
 # -----------------------------
-st.subheader("📥 Download Processed Data")
-csv = df.to_csv(index=False).encode("utf-8")
-st.download_button("Download CSV", csv, "processed_data.csv")
+st.subheader("📥 Download Processed Reports")
+
+# Excel
+excel_buffer = BytesIO()
+with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+    df.to_excel(writer, sheet_name='Processed_Data', index=False)
+excel_buffer.seek(0)
+st.download_button("Download Excel Report", excel_buffer, "AI_Excel_Report.xlsx")
+
+# PowerPoint
+prs = Presentation()
+slide = prs.slides.add_slide(prs.slide_layouts[5])
+slide.shapes.title.text = "AI-Powered Excel Report"
+rows, cols_table = df.shape
+table = slide.shapes.add_table(min(rows+1, 20), min(cols_table, 10), Inches(0.5), Inches(1.5), Inches(9), Inches(5)).table
+for j, col_name in enumerate(df.columns[:10]):
+    table.cell(0,j).text = str(col_name)
+for i, row in enumerate(df.head(20).values):
+    for j, val in enumerate(row[:10]):
+        table.cell(i+1,j).text = str(val)
+ppt_buffer = BytesIO()
+prs.save(ppt_buffer)
+ppt_buffer.seek(0)
+st.download_button("Download PowerPoint Preview", ppt_buffer, "AI_Excel_Report.pptx")
 
