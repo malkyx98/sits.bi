@@ -56,9 +56,9 @@ def detect_columns(df):
                 continue
         except:
             pass
-        # Numeric detection
+        # Numeric detection (fixed: numbers stored as strings now detected)
         numeric_series = pd.to_numeric(series, errors='coerce')
-        if numeric_series.notna().sum() / len(series) > 0.7:
+        if numeric_series.notna().any():  # at least some numeric values
             numeric_cols.append(col)
         else:
             categorical_cols.append(col)
@@ -78,10 +78,11 @@ c3.success(f"📅 Date Columns:\n{date_cols if date_cols else 'None'}")
 st.subheader("📊 Numeric KPIs")
 if numeric_cols:
     for col in numeric_cols:
-        col_total = df[col].sum()
-        col_avg = df[col].mean()
-        col_max = df[col].max()
-        col_min = df[col].min()
+        numeric_series = pd.to_numeric(df[col], errors='coerce')
+        col_total = numeric_series.sum()
+        col_avg = numeric_series.mean()
+        col_max = numeric_series.max()
+        col_min = numeric_series.min()
         k1,k2,k3,k4 = st.columns(4)
         k1.metric(f"{col} Total", round(col_total,2))
         k2.metric(f"{col} Avg", round(col_avg,2))
@@ -96,7 +97,6 @@ else:
 st.subheader("📈 Categorical Counts")
 if categorical_cols:
     for col in categorical_cols:
-        # Remove NaN and convert to string
         counts = df[col].dropna().astype(str).value_counts().head(10)
         if counts.empty:
             st.info(f"{col} has no valid values to display.")
@@ -128,7 +128,7 @@ else:
 # -----------------------------
 st.subheader("🔥 Correlation Heatmap")
 if len(numeric_cols) > 1:
-    corr = df[numeric_cols].corr()
+    corr = df[numeric_cols].apply(pd.to_numeric, errors='coerce').corr()
     fig_corr = px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', title="Correlation Heatmap")
     st.plotly_chart(fig_corr, use_container_width=True)
 else:
@@ -140,5 +140,4 @@ else:
 st.subheader("📥 Download Processed Data")
 csv = df.to_csv(index=False).encode("utf-8")
 st.download_button("Download CSV", csv, "processed_data.csv")
-
 
