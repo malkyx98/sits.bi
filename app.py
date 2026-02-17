@@ -1,136 +1,158 @@
-# ==============================================
-# 🌐 AI-Powered Universal Excel Analyzer Dashboard
-# ==============================================
-
-# Install required libraries
-!pip install pandas numpy matplotlib seaborn plotly openpyxl xlrd --quiet
-
-# -----------------------------
-# IMPORTS
-# -----------------------------
+# app.py
+import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
-from IPython.display import display, HTML
-from google.colab import files
+from io import BytesIO
+from pptx import Presentation
+from pptx.util import Inches, Pt
 
-# -----------------------------
+# -------------------------------
+# PAGE CONFIG & STYLE
+# -------------------------------
+st.set_page_config(page_title="🤖 AI-Powered Global Excel Analyzer", layout="wide")
+
+st.markdown("""
+<style>
+body {
+    background-color: #1f1f2e;
+    color: #f0f0f0;
+    font-family: 'Segoe UI', sans-serif;
+}
+h1, h2, h3, h4 {
+    color: #00b0f6;
+}
+.stButton>button {
+    background-color: #00b0f6;
+    color: white;
+}
+.stDownloadButton>button {
+    background-color: #ff7f50;
+    color: white;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🤖 AI-Powered Global Excel Analyzer")
+st.markdown("Upload ANY Excel file → Get instant AI-driven KPIs, trends, heatmaps & reports")
+
+# -------------------------------
 # FILE UPLOAD
-# -----------------------------
-uploaded = files.upload()
-file_name = list(uploaded.keys())[0]
-df = pd.read_excel(file_name)
-print(f"✅ Loaded file: {file_name} | Rows: {df.shape[0]} | Columns: {df.shape[1]}")
+# -------------------------------
+uploaded_file = st.file_uploader("Upload Excel File (.xlsx, .xls)", type=["xlsx","xls"])
 
-# -----------------------------
-# AUTOMATIC COLUMN DETECTION
-# -----------------------------
-def detect_columns(df):
-    numeric, categorical, date, id_cols, status = [], [], [], [], []
-    for col in df.columns:
-        s = df[col].dropna()
-        if pd.api.types.is_numeric_dtype(s):
-            numeric.append(col)
-        elif pd.api.types.is_datetime64_any_dtype(s):
-            date.append(col)
-        elif any(k in col.lower() for k in ['date','time']):
-            try:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
-                date.append(col)
-            except:
-                categorical.append(col)
-        elif any(k in col.lower() for k in ['id','name','ref','user']):
-            id_cols.append(col)
-        elif any(k in col.lower() for k in ['status','sla','done','closed','pending']):
-            status.append(col)
-        else:
-            categorical.append(col)
-    return numeric, categorical, date, id_cols, status
+if uploaded_file is None:
+    st.info("📂 Please upload an Excel file to start analysis.")
+    st.stop()
 
-numeric_cols, categorical_cols, date_cols, id_cols, status_cols = detect_columns(df)
+# -------------------------------
+# READ EXCEL FILE
+# -------------------------------
+try:
+    df = pd.read_excel(uploaded_file)
+except Exception as e:
+    st.error(f"Failed to read Excel file: {e}")
+    st.stop()
 
-# -----------------------------
-# BEAUTIFUL DASHBOARD HEADER
-# -----------------------------
-display(HTML("<h1 style='color:#00BFFF;text-align:center;'>🤖 AI-Powered Universal Excel Analyzer</h1>"))
-display(HTML(f"<h4 style='color:#FFD700;text-align:center;'>Loaded file: {file_name} | Rows: {df.shape[0]} | Columns: {df.shape[1]}</h4>"))
+st.success(f"File uploaded! Rows: {df.shape[0]}, Columns: {df.shape[1]}")
 
-# -----------------------------
-# DISPLAY COLUMN TYPES
-# -----------------------------
-display(HTML("<h3 style='color:#32CD32;'>🔍 Detected Column Roles:</h3>"))
-display(pd.DataFrame({
-    "Numeric Columns": [numeric_cols],
-    "Categorical Columns": [categorical_cols],
-    "Date Columns": [date_cols],
-    "ID/Name Columns": [id_cols],
-    "Status Columns": [status_cols]
-}))
+# -------------------------------
+# DETECT COLUMN TYPES
+# -------------------------------
+numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+date_cols = df.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
+categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
 
-# -----------------------------
-# NUMERIC KPIs
-# -----------------------------
-if numeric_cols:
-    display(HTML("<h3 style='color:#FF69B4;'>📊 Numeric KPIs:</h3>"))
-    kpi_table = pd.DataFrame(columns=["Column","Total","Mean","Max","Min","Std"])
-    for col in numeric_cols:
-        kpi_table = pd.concat([kpi_table, pd.DataFrame({
-            "Column":[col],
-            "Total":[df[col].sum()],
-            "Mean":[df[col].mean()],
-            "Max":[df[col].max()],
-            "Min":[df[col].min()],
-            "Std":[df[col].std()]
-        })])
-    display(kpi_table)
+# ID/Name columns heuristic
+id_cols = [col for col in categorical_cols if df[col].nunique() > df.shape[0]*0.7]
+
+# Status columns heuristic
+status_cols = [col for col in categorical_cols if df[col].nunique() <= 10 and col not in id_cols]
+
+st.markdown("### Detected Column Roles")
+st.markdown(f"🔢 Numeric: {numeric_cols if numeric_cols else 'None'}")
+st.markdown(f"🏷️ Categorical: { [c for c in categorical_cols if c not in id_cols+status_cols] or 'None' }")
+st.markdown(f"📅 Date: {date_cols if date_cols else 'None'}")
+st.markdown(f"🆔 ID/Name: {id_cols if id_cols else 'None'}")
+st.markdown(f"✅ Status: {status_cols if status_cols else 'None'}")
+
+# -------------------------------
+# KPI TABLES
+# -------------------------------
+st.markdown("### 📊 Automatic KPI & Summary Tables")
+kpi_table = pd.DataFrame()
+
+for col in numeric_cols:
+    kpi_table[col] = [df[col].sum(), df[col].mean(), df[col].max(), df[col].min()]
+kpi_table.index = ['Total', 'Average', 'Max', 'Min']
+
+if not kpi_table.empty:
+    st.dataframe(kpi_table)
 else:
-    display(HTML("<h4 style='color:#FF4500;'>No numeric columns detected.</h4>"))
+    st.info("No numeric columns detected for KPI calculation.")
 
-# -----------------------------
-# CORRELATION HEATMAP
-# -----------------------------
-if len(numeric_cols) >= 2:
-    display(HTML("<h3 style='color:#1E90FF;'>🧊 Numeric Correlation Heatmap:</h3>"))
+# -------------------------------
+# VISUALIZATIONS
+# -------------------------------
+st.markdown("### 📈 Automatic Visualizations")
+
+# Numeric columns: histogram & boxplot
+for col in numeric_cols:
+    st.subheader(f"Distribution - {col}")
+    fig, ax = plt.subplots(figsize=(8,3))
+    sns.histplot(df[col].dropna(), kde=True, ax=ax, color="#00b0f6")
+    st.pyplot(fig)
+
+# Correlation heatmap for numeric
+if len(numeric_cols) > 1:
+    st.subheader("Correlation Heatmap")
     corr = df[numeric_cols].corr()
-    plt.figure(figsize=(10,6))
-    sns.heatmap(corr, annot=True, fmt=".2f", cmap='coolwarm', cbar_kws={'label': 'Correlation'})
-    plt.show()
+    fig, ax = plt.subplots(figsize=(8,6))
+    sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+    st.pyplot(fig)
 
-# -----------------------------
-# CATEGORICAL ANALYSIS
-# -----------------------------
-if categorical_cols:
-    display(HTML("<h3 style='color:#8A2BE2;'>🏷️ Categorical Analysis:</h3>"))
-    for col in categorical_cols:
-        counts = df[col].value_counts().head(10)
-        display(HTML(f"<b>Top 10 values for '{col}':</b>"))
-        display(counts)
-        fig = px.bar(counts, x=counts.index, y=counts.values, 
-                     labels={'x':col,'y':'Count'},
-                     title=f"Top 10 {col} Values",
-                     color=counts.values, color_continuous_scale='Viridis')
-        fig.show()
+# Categorical counts bar chart
+for col in categorical_cols:
+    st.subheader(f"Top Values - {col}")
+    counts = df[col].value_counts().nlargest(10)
+    fig = px.bar(counts, x=counts.index, y=counts.values, color=counts.values,
+                 color_continuous_scale='Viridis')
+    st.plotly_chart(fig, use_container_width=True)
 
-# -----------------------------
-# DATE TREND ANALYSIS
-# -----------------------------
-if date_cols:
-    display(HTML("<h3 style='color:#FF8C00;'>📆 Date Trend Analysis:</h3>"))
-    for col in date_cols:
-        df[col+'_dt'] = pd.to_datetime(df[col], errors='coerce')
-        trend = df.groupby(df[col+'_dt'].dt.to_period('M')).size().rename_axis('Month').reset_index(name='Count')
-        if trend.shape[0] > 0:
-            fig = px.line(trend, x='Month', y='Count', markers=True, 
-                          title=f"Monthly Trend for {col}", color_discrete_sequence=['#00CED1'])
-            fig.show()
+# -------------------------------
+# EXPORT REPORTS
+# -------------------------------
+st.markdown("### 📥 Download Processed Reports")
 
-# -----------------------------
-# SAVE PROCESSED REPORT
-# -----------------------------
-output_file = "AI_Excel_Analysis_Report.xlsx"
-df.to_excel(output_file, index=False)
-print(f"\n✅ Processed report saved as {output_file}")
-files.download(output_file)
+# Excel Export
+excel_buffer = BytesIO()
+with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+    df.to_excel(writer, sheet_name='Processed_Data', index=False)
+st.download_button("Download Excel", excel_buffer.getvalue(), "processed_report.xlsx")
+
+# PowerPoint Export
+prs = Presentation()
+slide_layout = prs.slide_layouts[5]
+slide = prs.slides.add_slide(slide_layout)
+slide.shapes.title.text = "Automatic KPI & Summary"
+
+rows, cols_count = kpi_table.shape if not kpi_table.empty else (2,2)
+table = slide.shapes.add_table(rows+1, cols_count, Inches(0.5), Inches(1.5), Inches(9), Inches(1)).table
+
+# Header
+if not kpi_table.empty:
+    for j, col_name in enumerate(kpi_table.columns):
+        table.cell(0,j).text = str(col_name)
+    # Values
+    for i in range(rows):
+        for j in range(cols_count):
+            val = kpi_table.iloc[i,j]
+            table.cell(i+1,j).text = str(val)
+
+ppt_buffer = BytesIO()
+prs.save(ppt_buffer)
+st.download_button("Download PowerPoint", ppt_buffer.getvalue(), "processed_report.pptx")
+
 
