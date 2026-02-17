@@ -18,8 +18,20 @@ if uploaded_file is None:
     st.info("Please upload an Excel file to start analysis.")
     st.stop()
 
-df = pd.read_excel(uploaded_file)
+# Read Excel safely
+try:
+    df = pd.read_excel(uploaded_file)
+except Exception as e:
+    st.error(f"Failed to read Excel file: {e}")
+    st.stop()
+
 st.success(f"File uploaded! Rows: {df.shape[0]}, Columns: {df.shape[1]}")
+
+# -----------------------------
+# CLEAN COLUMN NAMES
+# -----------------------------
+df.columns = [str(col).strip() if col is not None else f"Column_{i}" 
+              for i, col in enumerate(df.columns)]
 
 # -----------------------------
 # DATA PREVIEW
@@ -34,6 +46,8 @@ def detect_columns(df):
     numeric_cols, categorical_cols, date_cols = [], [], []
     for col in df.columns:
         series = df[col].dropna()
+        if len(series) == 0:
+            continue
         # Date detection
         try:
             parsed = pd.to_datetime(series, errors='coerce')
@@ -54,9 +68,9 @@ numeric_cols, categorical_cols, date_cols = detect_columns(df)
 
 st.subheader("Detected Column Types")
 c1,c2,c3 = st.columns(3)
-c1.info(f"🔢 Numeric Columns:\n{numeric_cols}")
-c2.warning(f"🏷️ Categorical Columns:\n{categorical_cols}")
-c3.success(f"📅 Date Columns:\n{date_cols}")
+c1.info(f"🔢 Numeric Columns:\n{numeric_cols if numeric_cols else 'None'}")
+c2.warning(f"🏷️ Categorical Columns:\n{categorical_cols if categorical_cols else 'None'}")
+c3.success(f"📅 Date Columns:\n{date_cols if date_cols else 'None'}")
 
 # -----------------------------
 # AUTOMATIC KPIs FOR NUMERIC COLUMNS
@@ -82,7 +96,11 @@ else:
 st.subheader("📈 Categorical Counts")
 if categorical_cols:
     for col in categorical_cols:
-        counts = df[col].value_counts().head(10)
+        # Remove NaN and convert to string
+        counts = df[col].dropna().astype(str).value_counts().head(10)
+        if counts.empty:
+            st.info(f"{col} has no valid values to display.")
+            continue
         st.markdown(f"**{col}** - Top 10 values")
         st.bar_chart(counts)
 else:
@@ -97,6 +115,9 @@ if date_cols:
         df[col+'_parsed'] = pd.to_datetime(df[col], errors='coerce')
         trend = df.groupby(df[col+'_parsed'].dt.to_period("M")).size().reset_index(name='Count')
         trend[col+'_parsed'] = trend[col+'_parsed'].astype(str)
+        if trend.empty:
+            st.info(f"No valid dates to plot for {col}")
+            continue
         fig = px.line(trend, x=col+'_parsed', y='Count', title=f"Trend over time ({col})")
         st.plotly_chart(fig, use_container_width=True)
 else:
@@ -119,4 +140,5 @@ else:
 st.subheader("📥 Download Processed Data")
 csv = df.to_csv(index=False).encode("utf-8")
 st.download_button("Download CSV", csv, "processed_data.csv")
+
 
