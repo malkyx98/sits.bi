@@ -6,9 +6,9 @@ import plotly.express as px
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
-st.set_page_config(page_title="Global Excel Analyzer", layout="wide")
-st.title("📊 Global Excel Analyzer")
-st.write("Upload ANY Excel file → Get instant KPIs and visualizations automatically")
+st.set_page_config(page_title="Global Excel Analyzer v3", layout="wide")
+st.title("📊 Global Excel Analyzer v3")
+st.write("Upload ANY Excel file → Get interactive KPIs and visualizations automatically")
 
 # -----------------------------
 # FILE UPLOAD
@@ -56,9 +56,9 @@ def detect_columns(df):
                 continue
         except:
             pass
-        # Numeric detection (fixed: numbers stored as strings now detected)
+        # Numeric detection
         numeric_series = pd.to_numeric(series, errors='coerce')
-        if numeric_series.notna().any():  # at least some numeric values
+        if numeric_series.notna().any():
             numeric_cols.append(col)
         else:
             categorical_cols.append(col)
@@ -73,33 +73,60 @@ c2.warning(f"🏷️ Categorical Columns:\n{categorical_cols if categorical_cols
 c3.success(f"📅 Date Columns:\n{date_cols if date_cols else 'None'}")
 
 # -----------------------------
-# AUTOMATIC KPIs FOR NUMERIC COLUMNS
+# INTERACTIVE FILTERS
+# -----------------------------
+st.sidebar.subheader("🔎 Filters")
+
+# Numeric filters
+for col in numeric_cols:
+    min_val = float(df[col].min())
+    max_val = float(df[col].max())
+    step = (max_val - min_val) / 100 if max_val > min_val else 1
+    df = df[(df[col] >= st.sidebar.slider(f"{col} min", min_val, max_val, min_val, step)) &
+            (df[col] <= st.sidebar.slider(f"{col} max", min_val, max_val, max_val, step))]
+
+# Categorical filters
+for col in categorical_cols:
+    options = df[col].dropna().unique().tolist()
+    selected = st.sidebar.multiselect(f"{col} filter", options, default=options)
+    df = df[df[col].isin(selected)]
+
+# Date filters
+for col in date_cols:
+    try:
+        df[col+'_parsed'] = pd.to_datetime(df[col], errors='coerce')
+        min_date = df[col+'_parsed'].min()
+        max_date = df[col+'_parsed'].max()
+        selected_range = st.sidebar.date_input(f"{col} range", [min_date, max_date])
+        if len(selected_range) == 2:
+            df = df[(df[col+'_parsed'] >= pd.to_datetime(selected_range[0])) &
+                    (df[col+'_parsed'] <= pd.to_datetime(selected_range[1]))]
+    except:
+        continue
+
+# -----------------------------
+# NUMERIC KPIs
 # -----------------------------
 st.subheader("📊 Numeric KPIs")
 if numeric_cols:
     for col in numeric_cols:
         numeric_series = pd.to_numeric(df[col], errors='coerce')
-        col_total = numeric_series.sum()
-        col_avg = numeric_series.mean()
-        col_max = numeric_series.max()
-        col_min = numeric_series.min()
         k1,k2,k3,k4 = st.columns(4)
-        k1.metric(f"{col} Total", round(col_total,2))
-        k2.metric(f"{col} Avg", round(col_avg,2))
-        k3.metric(f"{col} Max", col_max)
-        k4.metric(f"{col} Min", col_min)
+        k1.metric(f"{col} Total", round(numeric_series.sum(),2))
+        k2.metric(f"{col} Avg", round(numeric_series.mean(),2))
+        k3.metric(f"{col} Max", numeric_series.max())
+        k4.metric(f"{col} Min", numeric_series.min())
 else:
     st.info("No numeric columns detected.")
 
 # -----------------------------
-# FREQUENCY COUNTS FOR CATEGORICAL
+# CATEGORICAL COUNTS
 # -----------------------------
-st.subheader("📈 Categorical Counts")
+st.subheader("📈 Categorical Counts (Top 10)")
 if categorical_cols:
     for col in categorical_cols:
         counts = df[col].dropna().astype(str).value_counts().head(10)
         if counts.empty:
-            st.info(f"{col} has no valid values to display.")
             continue
         st.markdown(f"**{col}** - Top 10 values")
         st.bar_chart(counts)
@@ -107,16 +134,16 @@ else:
     st.info("No categorical columns detected.")
 
 # -----------------------------
-# TRENDS FOR DATE COLUMNS
+# DATE TRENDS
 # -----------------------------
 st.subheader("📆 Date Trends")
 if date_cols:
     for col in date_cols:
-        df[col+'_parsed'] = pd.to_datetime(df[col], errors='coerce')
+        if col+'_parsed' not in df.columns:
+            df[col+'_parsed'] = pd.to_datetime(df[col], errors='coerce')
         trend = df.groupby(df[col+'_parsed'].dt.to_period("M")).size().reset_index(name='Count')
         trend[col+'_parsed'] = trend[col+'_parsed'].astype(str)
         if trend.empty:
-            st.info(f"No valid dates to plot for {col}")
             continue
         fig = px.line(trend, x=col+'_parsed', y='Count', title=f"Trend over time ({col})")
         st.plotly_chart(fig, use_container_width=True)
@@ -124,7 +151,7 @@ else:
     st.info("No date columns detected.")
 
 # -----------------------------
-# CORRELATION HEATMAP FOR NUMERIC
+# CORRELATION HEATMAP
 # -----------------------------
 st.subheader("🔥 Correlation Heatmap")
 if len(numeric_cols) > 1:
