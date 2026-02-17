@@ -1,177 +1,134 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 from io import BytesIO
-from datetime import datetime
+import plotly.express as px
 
 # Optional PowerPoint export
 try:
     from pptx import Presentation
     pptx_available = True
-except:
+except ImportError:
     pptx_available = False
 
-# -----------------------------
+# ------------------------------
 # PAGE CONFIG
-# -----------------------------
-st.set_page_config(page_title="🤖 AI-Powered Global Excel Analyzer", layout="wide")
+# ------------------------------
+st.set_page_config(page_title="AI-Powered Global Excel Analyzer", layout="wide")
 st.title("🤖 AI-Powered Global Excel Analyzer")
-st.write("Upload ANY Excel file → Get instant AI-driven KPIs, trends, and reports")
+st.markdown("Upload ANY Excel file → Get instant AI-driven KPIs, trends, and reports")
 
-# -----------------------------
+# ------------------------------
 # FILE UPLOAD
-# -----------------------------
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx","xls"])
-if uploaded_file is None:
-    st.info("Please upload an Excel file to start analysis.")
-    st.stop()
+# ------------------------------
+uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx", "xls"])
 
-# Read Excel safely
-try:
+if uploaded_file:
     df = pd.read_excel(uploaded_file)
-except Exception as e:
-    st.error(f"Failed to read Excel file: {e}")
-    st.stop()
-
-st.success(f"File uploaded! Rows: {df.shape[0]}, Columns: {df.shape[1]}")
-
-# Clean column names
-df.columns = [str(c).strip() if c else f"Column_{i}" for i,c in enumerate(df.columns)]
-
-with st.expander("Preview Data"):
-    st.dataframe(df.head())
-
-# -----------------------------
-# AI COLUMN ROLE DETECTION
-# -----------------------------
-def detect_column_roles(df):
-    numeric_cols, categorical_cols, date_cols, id_cols, status_cols = [], [], [], [], []
-
-    for col in df.columns:
-        sample = df[col].dropna()
-        if sample.empty:
-            continue
-
-        # Date detection
+    st.success(f"File uploaded! Rows: {df.shape[0]}, Columns: {df.shape[1]}")
+    
+    # ------------------------------
+    # DETECT COLUMN TYPES
+    # ------------------------------
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    date_cols = df.select_dtypes(include='datetime').columns.tolist()
+    
+    # Treat object columns: some may be dates
+    for col in df.select_dtypes(include='object').columns:
         try:
-            parsed = pd.to_datetime(sample, errors='coerce')
-            if parsed.notna().sum() / len(sample) > 0.5:
-                date_cols.append(col)
-                continue
-        except:
-            pass
-
-        # Numeric detection
-        numeric_series = pd.to_numeric(sample, errors='coerce')
-        if numeric_series.notna().any():
-            numeric_cols.append(col)
-            continue
-
-        # Status detection
-        lower = sample.astype(str).str.lower()
-        if lower.isin(['yes','no','closed','open','passed','failed']).any():
-            status_cols.append(col)
-            continue
-
-        # ID / identifier detection
-        if any(keyword in col.lower() for keyword in ['id','name','ref','agent','technician','caller']):
-            id_cols.append(col)
-            continue
-
-        # Default categorical
-        categorical_cols.append(col)
-
-    return numeric_cols, categorical_cols, date_cols, id_cols, status_cols
-
-numeric_cols, categorical_cols, date_cols, id_cols, status_cols = detect_column_roles(df)
-
-st.subheader("Detected Column Roles")
-c1,c2,c3,c4,c5 = st.columns(5)
-c1.info(f"🔢 Numeric: {numeric_cols if numeric_cols else 'None'}")
-c2.warning(f"🏷️ Categorical: {categorical_cols if categorical_cols else 'None'}")
-c3.success(f"📅 Date: {date_cols if date_cols else 'None'}")
-c4.info(f"🆔 ID/Name: {id_cols if id_cols else 'None'}")
-c5.info(f"✅ Status: {status_cols if status_cols else 'None'}")
-
-# -----------------------------
-# AUTOMATIC ANALYSIS
-# -----------------------------
-st.subheader("📊 Automatic KPI & Summary Tables")
-
-# Numeric KPIs
-if numeric_cols:
-    for col in numeric_cols:
-        series = pd.to_numeric(df[col], errors='coerce')
-        k1,k2,k3,k4 = st.columns(4)
-        k1.metric(f"{col} Total", round(series.sum(),2))
-        k2.metric(f"{col} Avg", round(series.mean(),2))
-        k3.metric(f"{col} Max", round(series.max(),2))
-        k4.metric(f"{col} Min", round(series.min(),2))
-else:
-    st.info("No numeric columns detected.")
-
-# Status KPIs
-if status_cols:
-    for col in status_cols:
-        counts = df[col].value_counts()
-        st.markdown(f"**{col} Summary**")
-        st.table(counts)
-
-# Categorical top 10
-if categorical_cols:
-    for col in categorical_cols:
-        counts = df[col].astype(str).value_counts().head(10)
-        if not counts.empty:
-            st.markdown(f"**{col} Top 10 Values**")
-            st.bar_chart(counts)
-
-# Date trends
-if date_cols:
-    for col in date_cols:
-        try:
-            df[col+'_parsed'] = pd.to_datetime(df[col], errors='coerce')
-            trend = df.groupby(df[col+'_parsed'].dt.to_period("M")).size().reset_index(name='Count')
-            trend[col+'_parsed'] = trend[col+'_parsed'].astype(str)
-            fig = px.line(trend, x=col+'_parsed', y='Count', title=f"Trend over time ({col})")
-            st.plotly_chart(fig, use_container_width=True)
+            df[col] = pd.to_datetime(df[col])
+            date_cols.append(col)
         except:
             continue
+    
+    numeric_cols = [c for c in df.columns if c in numeric_cols]
+    date_cols = list(set(date_cols))
+    categorical_cols = [c for c in df.columns if c not in numeric_cols + date_cols]
 
-# Numeric correlation
-if len(numeric_cols) > 1:
-    st.subheader("🔥 Numeric Correlation Heatmap")
-    corr = df[numeric_cols].apply(pd.to_numeric, errors='coerce').corr()
-    fig_corr = px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', title="Correlation Heatmap")
-    st.plotly_chart(fig_corr, use_container_width=True)
+    # Detect ID/Name like columns
+    id_cols = [c for c in categorical_cols if 'name' in c.lower() or 'id' in c.lower()]
+    status_cols = [c for c in categorical_cols if 'status' in c.lower()]
 
-# -----------------------------
-# DOWNLOAD REPORTS
-# -----------------------------
-st.subheader("📥 Download Processed Reports")
+    st.subheader("Detected Column Roles")
+    st.markdown(f"🔢 Numeric: {numeric_cols if numeric_cols else 'None'}")
+    st.markdown(f"🏷️ Categorical: {categorical_cols if categorical_cols else 'None'}")
+    st.markdown(f"📅 Date: {date_cols if date_cols else 'None'}")
+    st.markdown(f"🆔 ID/Name: {id_cols if id_cols else 'None'}")
+    st.markdown(f"✅ Status: {status_cols if status_cols else 'None'}")
 
-# Excel
-excel_buffer = BytesIO()
-with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-    df.to_excel(writer, sheet_name='Processed_Data', index=False)
-excel_buffer.seek(0)
-st.download_button("Download Excel Report", excel_buffer, "AI_Excel_Report.xlsx")
+    # ------------------------------
+    # AUTOMATIC KPI TABLES
+    # ------------------------------
+    st.subheader("📊 Automatic KPI & Summary Tables")
+    if numeric_cols:
+        kpi_df = df[numeric_cols].agg(['count','sum','mean','max','min']).transpose()
+        kpi_df = kpi_df.rename(columns={'count':'Total','mean':'Average','max':'Max','min':'Min'})
+        st.dataframe(kpi_df)
+    else:
+        st.info("No numeric columns detected.")
 
-# Optional PowerPoint
-if pptx_available:
-    prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "AI-Powered Excel Report"
-    rows, cols_table = df.shape
-    table = slide.shapes.add_table(min(rows+1, 20), min(cols_table, 10), 0.5, 1.5, 9, 5).table
-    for j, col_name in enumerate(df.columns[:10]):
-        table.cell(0,j).text = str(col_name)
-    for i, row in enumerate(df.head(20).values):
-        for j, val in enumerate(row[:10]):
-            table.cell(i+1,j).text = str(val)
-    ppt_buffer = BytesIO()
-    prs.save(ppt_buffer)
-    ppt_buffer.seek(0)
-    st.download_button("Download PowerPoint Preview", ppt_buffer, "AI_Excel_Report.pptx")
+    # ------------------------------
+    # AUTOMATIC VISUALIZATIONS
+    # ------------------------------
+    st.subheader("📈 Automatic Visualizations")
+    # Categorical counts
+    for col in categorical_cols[:5]:  # limit to first 5 columns for display
+        st.markdown(f"#### {col} - Top Values")
+        counts = df[col].value_counts().head(10)
+        st.bar_chart(counts)
+
+    # Numeric trends over date
+    if numeric_cols and date_cols:
+        date_col = st.selectbox("Select Date Column for Trend", date_cols)
+        numeric_col = st.selectbox("Select Numeric Column for Trend", numeric_cols)
+        trend_df = df.groupby(date_col)[numeric_col].sum().reset_index()
+        fig = px.line(trend_df, x=date_col, y=numeric_col, title=f"{numeric_col} Trend over {date_col}")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ------------------------------
+    # DOWNLOAD PROCESSED DATA
+    # ------------------------------
+    st.subheader("📥 Download Processed Reports")
+    excel_buffer = BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name="Raw_Data")
+        if numeric_cols:
+            kpi_df.to_excel(writer, sheet_name="KPI_Summary")
+    st.download_button("Download Excel Report", excel_buffer.getvalue(), "AI_Excel_Report.xlsx")
+
+    # ------------------------------
+    # OPTIONAL POWERPOINT EXPORT
+    # ------------------------------
+    if pptx_available:
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        slide.shapes.title.text = "AI-Powered Excel Report"
+
+        max_rows = min(df.shape[0]+1, 30)
+        max_cols = min(df.shape[1], 10)
+
+        table_shape = slide.shapes.add_table(max_rows, max_cols, 0.5, 1.5, 9, 5)
+        table = table_shape.table
+
+        # Header
+        for j in range(max_cols):
+            table.cell(0,j).text = str(df.columns[j])
+
+        # Data rows
+        for i in range(1, max_rows):
+            for j in range(max_cols):
+                if i-1 < df.shape[0]:
+                    table.cell(i,j).text = str(df.iloc[i-1,j])
+                else:
+                    table.cell(i,j).text = ""
+
+        ppt_buffer = BytesIO()
+        prs.save(ppt_buffer)
+        ppt_buffer.seek(0)
+        st.download_button("Download PowerPoint Preview", ppt_buffer, "AI_Excel_Report.pptx")
+    else:
+        st.info("Install `python-pptx` to enable PowerPoint export.")
 else:
-    st.info("Install `python-pptx` to enable PowerPoint export.")
+    st.info("📂 Please upload an Excel file to start analysis.")
+
