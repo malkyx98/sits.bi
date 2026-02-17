@@ -4,13 +4,18 @@ import numpy as np
 import plotly.express as px
 from io import BytesIO
 from datetime import datetime
-from pptx import Presentation
-from pptx.util import Inches
+
+# Optional PowerPoint export
+try:
+    from pptx import Presentation
+    pptx_available = True
+except:
+    pptx_available = False
 
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
-st.set_page_config(page_title="AI-Powered Excel Analyzer", layout="wide")
+st.set_page_config(page_title="🤖 AI-Powered Global Excel Analyzer", layout="wide")
 st.title("🤖 AI-Powered Global Excel Analyzer")
 st.write("Upload ANY Excel file → Get instant AI-driven KPIs, trends, and reports")
 
@@ -63,13 +68,13 @@ def detect_column_roles(df):
             numeric_cols.append(col)
             continue
 
-        # Status detection (yes/no, closed/open, passed/failed)
+        # Status detection
         lower = sample.astype(str).str.lower()
         if lower.isin(['yes','no','closed','open','passed','failed']).any():
             status_cols.append(col)
             continue
 
-        # ID / identifier detection (names, codes)
+        # ID / identifier detection
         if any(keyword in col.lower() for keyword in ['id','name','ref','agent','technician','caller']):
             id_cols.append(col)
             continue
@@ -86,11 +91,11 @@ c1,c2,c3,c4,c5 = st.columns(5)
 c1.info(f"🔢 Numeric: {numeric_cols if numeric_cols else 'None'}")
 c2.warning(f"🏷️ Categorical: {categorical_cols if categorical_cols else 'None'}")
 c3.success(f"📅 Date: {date_cols if date_cols else 'None'}")
-c4.primary(f"🆔 ID/Name: {id_cols if id_cols else 'None'}")
-c5.secondary(f"✅ Status: {status_cols if status_cols else 'None'}")
+c4.info(f"🆔 ID/Name: {id_cols if id_cols else 'None'}")
+c5.info(f"✅ Status: {status_cols if status_cols else 'None'}")
 
 # -----------------------------
-# AI AUTOMATIC ANALYSIS
+# AUTOMATIC ANALYSIS
 # -----------------------------
 st.subheader("📊 Automatic KPI & Summary Tables")
 
@@ -133,9 +138,7 @@ if date_cols:
         except:
             continue
 
-# -----------------------------
-# CORRELATION FOR NUMERIC
-# -----------------------------
+# Numeric correlation
 if len(numeric_cols) > 1:
     st.subheader("🔥 Numeric Correlation Heatmap")
     corr = df[numeric_cols].apply(pd.to_numeric, errors='coerce').corr()
@@ -143,7 +146,7 @@ if len(numeric_cols) > 1:
     st.plotly_chart(fig_corr, use_container_width=True)
 
 # -----------------------------
-# DOWNLOAD PROCESSED EXCEL & PPT
+# DOWNLOAD REPORTS
 # -----------------------------
 st.subheader("📥 Download Processed Reports")
 
@@ -154,19 +157,21 @@ with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
 excel_buffer.seek(0)
 st.download_button("Download Excel Report", excel_buffer, "AI_Excel_Report.xlsx")
 
-# PowerPoint
-prs = Presentation()
-slide = prs.slides.add_slide(prs.slide_layouts[5])
-slide.shapes.title.text = "AI-Powered Excel Report"
-rows, cols_table = df.shape
-table = slide.shapes.add_table(min(rows+1, 20), min(cols_table, 10), Inches(0.5), Inches(1.5), Inches(9), Inches(5)).table
-for j, col_name in enumerate(df.columns[:10]):
-    table.cell(0,j).text = str(col_name)
-for i, row in enumerate(df.head(20).values):
-    for j, val in enumerate(row[:10]):
-        table.cell(i+1,j).text = str(val)
-ppt_buffer = BytesIO()
-prs.save(ppt_buffer)
-ppt_buffer.seek(0)
-st.download_button("Download PowerPoint Preview", ppt_buffer, "AI_Excel_Report.pptx")
-
+# Optional PowerPoint
+if pptx_available:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "AI-Powered Excel Report"
+    rows, cols_table = df.shape
+    table = slide.shapes.add_table(min(rows+1, 20), min(cols_table, 10), 0.5, 1.5, 9, 5).table
+    for j, col_name in enumerate(df.columns[:10]):
+        table.cell(0,j).text = str(col_name)
+    for i, row in enumerate(df.head(20).values):
+        for j, val in enumerate(row[:10]):
+            table.cell(i+1,j).text = str(val)
+    ppt_buffer = BytesIO()
+    prs.save(ppt_buffer)
+    ppt_buffer.seek(0)
+    st.download_button("Download PowerPoint Preview", ppt_buffer, "AI_Excel_Report.pptx")
+else:
+    st.info("Install `python-pptx` to enable PowerPoint export.")
