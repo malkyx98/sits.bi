@@ -5,7 +5,6 @@ import numpy as np
 from io import BytesIO
 import plotly.express as px
 
-# Optional PowerPoint export
 try:
     from pptx import Presentation
     pptx_available = True
@@ -27,26 +26,25 @@ uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx", "xls"])
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
     st.success(f"File uploaded! Rows: {df.shape[0]}, Columns: {df.shape[1]}")
-    
+
     # ------------------------------
     # DETECT COLUMN TYPES
     # ------------------------------
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
     date_cols = df.select_dtypes(include='datetime').columns.tolist()
-    
-    # Treat object columns: some may be dates
+
+    # Try to convert object columns to dates
     for col in df.select_dtypes(include='object').columns:
         try:
             df[col] = pd.to_datetime(df[col])
             date_cols.append(col)
         except:
             continue
-    
+
     numeric_cols = [c for c in df.columns if c in numeric_cols]
     date_cols = list(set(date_cols))
     categorical_cols = [c for c in df.columns if c not in numeric_cols + date_cols]
 
-    # Detect ID/Name like columns
     id_cols = [c for c in categorical_cols if 'name' in c.lower() or 'id' in c.lower()]
     status_cols = [c for c in categorical_cols if 'status' in c.lower()]
 
@@ -72,13 +70,17 @@ if uploaded_file:
     # AUTOMATIC VISUALIZATIONS
     # ------------------------------
     st.subheader("📈 Automatic Visualizations")
-    # Categorical counts
-    for col in categorical_cols[:5]:  # limit to first 5 columns for display
-        st.markdown(f"#### {col} - Top Values")
-        counts = df[col].value_counts().head(10)
-        st.bar_chart(counts)
+    
+    # Safe categorical plots (skip if too many unique values)
+    for col in categorical_cols[:5]:
+        counts = df[col].value_counts().head(20)
+        if counts.empty or counts.shape[0] <= 1:
+            st.warning(f"Cannot plot '{col}' (too few values or empty)")
+        else:
+            fig = px.bar(counts, x=counts.index, y=counts.values, labels={'x': col, 'y':'Count'}, title=f"Top values in {col}")
+            st.plotly_chart(fig, use_container_width=True)
 
-    # Numeric trends over date
+    # Numeric trends over dates
     if numeric_cols and date_cols:
         date_col = st.selectbox("Select Date Column for Trend", date_cols)
         numeric_col = st.selectbox("Select Numeric Column for Trend", numeric_cols)
@@ -111,11 +113,9 @@ if uploaded_file:
         table_shape = slide.shapes.add_table(max_rows, max_cols, 0.5, 1.5, 9, 5)
         table = table_shape.table
 
-        # Header
         for j in range(max_cols):
             table.cell(0,j).text = str(df.columns[j])
 
-        # Data rows
         for i in range(1, max_rows):
             for j in range(max_cols):
                 if i-1 < df.shape[0]:
@@ -131,4 +131,5 @@ if uploaded_file:
         st.info("Install `python-pptx` to enable PowerPoint export.")
 else:
     st.info("📂 Please upload an Excel file to start analysis.")
+
 
